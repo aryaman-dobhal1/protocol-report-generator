@@ -1,0 +1,3 @@
+{"project":"PRJ-2041","component":"Bracket B-12","method":"TM-104 wall thickness","unit":"mm","min":2.4,"max":2.6,
+"samples":["S-001","S-002","S-003","S-004","S-005"],"attachments":["Calibration record"],"calibrationRef":"CAL-7781",
+"fixedStatement":"This report was prepared in accordance with the approved protocol."}

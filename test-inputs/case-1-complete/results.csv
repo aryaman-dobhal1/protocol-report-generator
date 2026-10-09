@@ -1,0 +1,6 @@
+sample_id,measurement,unit,observation
+S-001,2.48,mm,Clean edge
+S-002,2.52,mm,No defects
+S-003,2.45,mm,Minor burr
+S-004,2.57,mm,No defects
+S-005,2.50,mm,No defects
