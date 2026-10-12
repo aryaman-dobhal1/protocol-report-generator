@@ -4,6 +4,7 @@ async function buildForm(inp, vals) {
   fd.append('results', new Blob([inp.csv], { type: 'text/csv' }), inp.csvName || 'results.csv')
   inp.docs.forEach(d => fd.append('references', new Blob([d.text], { type: 'text/markdown' }), d.name))
   if (inp.pdf) fd.append('calibration', await (await fetch(inp.pdf.url)).blob(), inp.pdf.name)
+  ;(inp.images || []).forEach(i => fd.append('images', i.file, i.name))   // evidence photos
   fd.append('overrides', JSON.stringify(vals))   // edited measurements
   return fd
 }

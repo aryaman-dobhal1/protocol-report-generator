@@ -104,8 +104,17 @@ def placeholder_values(p, rng, passages, has_pdf, summary):
             "results_table": "", "summary": summary}
 
 
+def image_sample(name, planned):
+    """Link an image to a planned sample by its file name, e.g. 'S-003.jpg' or 'S-003_edge.png'."""
+    n = name.lower()
+    for s in sorted(planned, key=len, reverse=True):
+        if re.search(r"(?<![a-z0-9])%s(?![0-9])" % re.escape(s.lower()), n):
+            return s
+    return None
+
+
 # ---------- analysis ----------
-def analyze(p, result_rows, docs, has_pdf, template_keys=None, overrides=None, results_name="results.csv"):
+def analyze(p, result_rows, docs, has_pdf, template_keys=None, overrides=None, results_name="results.csv", image_names=None):
     overrides = overrides or {}
     lo, hi, unit = p["min"], p["max"], p["unit"]
     rng = f"{lo:.2f} to {hi:.2f} {unit}"
@@ -135,11 +144,15 @@ def analyze(p, result_rows, docs, has_pdf, template_keys=None, overrides=None, r
 
     # Narrative facts come only from the verified values above. Never states causes.
     s = f"{len(rows)} of {len(p['samples'])} planned samples were measured. {passed} met the acceptance range of {rng} and {len(failing)} did not."
-    for r in failing:
+    for r in failing[:5]:
         s += (f" {r['id']} measured {fmt(r['value'])} {unit}, {'above' if r['value'] > hi else 'below'} the range, and is reported as Fail"
               f" (observation: {r['observation'].lower()}). The supplied evidence gives no cause.")
-    for r in no_value:
+    if len(failing) > 5:
+        s += f" {len(failing) - 5} further samples also failed; see Attachment B."
+    for r in no_value[:5]:
         s += f" {r['id']} has no measurement."
+    if len(no_value) > 5:
+        s += f" {len(no_value) - 5} further samples have no measurement."
     if missing:
         s += f" {', '.join(missing)} {'were' if len(missing) > 1 else 'was'} planned but no result was supplied."
     if not has_pdf:
@@ -150,6 +163,10 @@ def analyze(p, result_rows, docs, has_pdf, template_keys=None, overrides=None, r
     vals = placeholder_values(p, rng, passages, has_pdf, s)
     unfilled = ["{{%s}}" % k for k in (template_keys or DEFAULT_KEYS) if vals.get(k) is None]
     C = lambda ok, level: "ok" if ok else level
+    images = [{"name": n, "sample": image_sample(n, p["samples"])} for n in (image_names or [])]
+    no_photo = [s for s in p["samples"] if s not in {i["sample"] for i in images}]
+    unlinked = [i["name"] for i in images if i["sample"] is None]
+    fail_txt = ", ".join(f"{r['id']} at {fmt(r['value'])}" for r in failing[:5]) + (f" and {len(failing) - 5} more" if len(failing) > 5 else "")
     checks = [
         {"status": C(not missing, "warn"), "title": "Sample count",
          "detail": f"{len(rows)} of {len(p['samples'])} planned samples" + (f", missing {', '.join(missing)}" if missing else "")},
@@ -163,12 +180,16 @@ def analyze(p, result_rows, docs, has_pdf, template_keys=None, overrides=None, r
         {"status": C(has_pdf, "bad"), "title": "Required attachments",
          "detail": "Calibration record supplied" if has_pdf else "Calibration record missing"},
         {"status": C(not failing, "bad"), "title": "Acceptance range",
-         "detail": f"{', '.join(f'{r['id']} at {fmt(r['value'])}' for r in failing)} outside {rng}" if failing else f"All results within {rng}"},
+         "detail": f"{fail_txt} outside {rng}" if failing else f"All results within {rng}"},
         {"status": C(not unfilled, "warn"), "title": "Template placeholders",
          "detail": f"{len(unfilled)} unfilled: {', '.join(unfilled)}" if unfilled else "None unfilled"},
         {"status": C(chunks, "bad"), "title": "Reference documents",
          "detail": f"{len(docs)} documents, {len(chunks)} passages indexed" if chunks else "No reference documents loaded"},
+        {"status": C(not images or not (no_photo or unlinked), "warn"), "title": "Photographic evidence",
+         "detail": "No images supplied (optional)" if not images else ". ".join(filter(None, [
+             f"{len(images)} images", no_photo and f"No photo for {', '.join(no_photo)}",
+             unlinked and f"Not linked to a sample: {', '.join(unlinked)}"]))},
     ]
     return {"range": rng, "rows": rows, "missing": missing, "extra": extra, "total": len(rows), "passed": passed,
             "failed": len(failing), "no_value": len(no_value), "passages": passages, "checks": checks,
-            "unfilled": unfilled, "summary": s}
+            "unfilled": unfilled, "summary": s, "images": images, "no_photo": no_photo if images else []}

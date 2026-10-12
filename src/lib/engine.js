@@ -37,6 +37,13 @@ export function retrieve(chunks, query, k = 2) {
     .filter(c => c.score > 0).sort((a, b) => b.score - a.score).slice(0, k)
 }
 
+// Link an image to a planned sample by file name, e.g. "S-003.jpg" or "S-003_edge.png" (same rule as the backend)
+export function imageSample(name, planned) {
+  const n = name.toLowerCase()
+  return [...planned].sort((a, b) => b.length - a.length)
+    .find(s => new RegExp(`(?<![a-z0-9])${s.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![0-9])`).test(n)) || null
+}
+
 export function analyze(inp, vals = {}) {
   const P = inp.protocol
   const rows = parseCSV(inp.csv).map(r => {
@@ -58,6 +65,9 @@ export function analyze(inp, vals = {}) {
 
   const unfilled = inp.pdf ? [] : ['{{calibration_ref}}']
   const range = `${f2(P.min)} to ${f2(P.max)} ${P.unit}`
+  const images = (inp.images || []).map(i => ({ name: i.name, sample: imageSample(i.name, P.samples) }))
+  const noPhoto = images.length ? P.samples.filter(s => !images.some(i => i.sample === s)) : []
+  const unlinked = images.filter(i => !i.sample).map(i => i.name)
   const checks = [
     [missing.length ? 'warn' : 'ok', 'Sample count', `${rows.length} of ${P.samples.length} planned samples${missing.length ? `, missing ${missing.join(', ')}` : ''}`],
     [missing.length || extra.length ? 'warn' : 'ok', 'Sample IDs', missing.length || extra.length ? [missing.length && `Missing ${missing.join(', ')}`, extra.length && `Unplanned ${extra.join(', ')}`].filter(Boolean).join('. ') : 'Planned and actual IDs match'],
@@ -66,7 +76,9 @@ export function analyze(inp, vals = {}) {
     [inp.pdf ? 'ok' : 'bad', 'Required attachments', inp.pdf ? 'Calibration record supplied' : 'Calibration record missing'],
     [failing.length ? 'bad' : 'ok', 'Acceptance range', failing.length ? `${failing.map(r => `${r.id} at ${f2(r.value)}`).join(', ')} outside ${range}` : `All results within ${range}`],
     [unfilled.length ? 'warn' : 'ok', 'Template placeholders', unfilled.length ? `${unfilled.length} unfilled: ${unfilled.join(', ')}` : 'None unfilled'],
-    [chunks.length ? 'ok' : 'bad', 'Reference documents', chunks.length ? `${inp.docs.length} documents, ${chunks.length} passages indexed` : 'No reference documents loaded']]
+    [chunks.length ? 'ok' : 'bad', 'Reference documents', chunks.length ? `${inp.docs.length} documents, ${chunks.length} passages indexed` : 'No reference documents loaded'],
+    [noPhoto.length || unlinked.length ? 'warn' : 'ok', 'Photographic evidence', !images.length ? 'No images supplied (optional)'
+      : [`${images.length} images`, noPhoto.length && `No photo for ${noPhoto.join(', ')}`, unlinked.length && `Not linked to a sample: ${unlinked.join(', ')}`].filter(Boolean).join('. ')]]
 
   // Narrative drafted only from verified facts above. It never states causes.
   let s = `${rows.length} of ${P.samples.length} planned samples were measured. ${passed} met the acceptance range of ${range} and ${failed} did not.`
@@ -75,7 +87,7 @@ export function analyze(inp, vals = {}) {
   if (missing.length) s += ` ${missing.join(', ')} ${missing.length > 1 ? 'were' : 'was'} planned but no result was supplied.`
   if (!inp.pdf) s += ' The calibration record (Attachment A) was not supplied, so equipment calibration could not be verified.'
   if (method[0]) s += ` Method context is taken from ${method[0].file}, ${method[0].ref}.`
-  return { rows, missing, extra, passed, failed, total: rows.length, checks, passages, summary: s, range, unfilled }
+  return { rows, missing, extra, passed, failed, total: rows.length, checks, passages, summary: s, range, unfilled, images, noPhoto }
 }
 
 export const calText = (p, pdf) => (pdf ? (p.calibrationRef ? `${p.calibrationRef} (Attachment A)` : 'See Attachment A') : null)
